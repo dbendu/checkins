@@ -1,0 +1,9 @@
+# среда разработки
+.idea/
+.vs/
+*.DotSettings.user
+
+# сборка
+bin/
+obj/
+*.user
