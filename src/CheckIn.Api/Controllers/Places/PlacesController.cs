@@ -29,6 +29,7 @@ public sealed class PlacesController(NearbyPlacesService search) : ControllerBas
                         new NearbyPlaceResponse(
                             place.Place.Id,
                             place.Place.Name,
+                            place.Place.Category.Id,
                             place.Place.Category.Title,
                             place.Place.Address,
                             place.Place.Location.Lat,

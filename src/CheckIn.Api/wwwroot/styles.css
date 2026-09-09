@@ -120,6 +120,14 @@ button:disabled { opacity: 0.5; cursor: default; }
   font-variant-numeric: tabular-nums;
 }
 
+/* 40 пикселей по высоте — чтобы в кнопку можно было попасть пальцем. */
+.check-in {
+  flex: none;
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
 .attribution {
   margin: 10px 0 0;
   font-size: 11px;
@@ -127,3 +135,49 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .empty { padding: 12px 2px; color: var(--muted); font-size: 13px; }
+
+/* ---------- вкладки ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  /* 44 пикселя по высоте — чтобы уверенно попадать пальцем. */
+  min-height: 44px;
+  padding: 0 14px;
+  /* Подчёркивание рисуем всегда, прозрачным: иначе активная вкладка
+     смещала бы соседние на два пикселя. */
+  border-bottom: 2px solid transparent;
+}
+
+.tab.on {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- лента отметок ---------- */
+
+.feed { display: flex; flex-direction: column; }
+
+.visit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.visit:last-child { border-bottom: 0; }
+
+.visit-when {
+  font-size: 12px;
+  color: var(--faint);
+  flex: none;
+}

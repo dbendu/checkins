@@ -1,17 +1,18 @@
-using Domain.Config;
+using Database;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace CheckIn.Api.Controllers.Categories;
 
 [ApiController]
 [Route("api/categories")]
-public sealed class CategoriesController(IOptions<PlacesCategoriesConfig> config) : ControllerBase
+public sealed class CategoriesController(IPlacesCategoriesRepository repository) : ControllerBase
 {
     [HttpGet]
-    public ActionResult<CategoryResponse[]> Get()
+    public async Task<ActionResult<CategoryResponse[]>> Get(CancellationToken token)
     {
-        var response = config.Value.Categories
+        var categories = await repository.Get(token);
+
+        var response = categories
             .Select(category => new CategoryResponse(category.Id, category.Title))
             .ToArray();
 

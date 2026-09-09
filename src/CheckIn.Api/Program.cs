@@ -1,3 +1,5 @@
+using Database;
+using Database.Config;
 using Domain.Config;
 using Logic;
 using Microsoft.Extensions.Options;
@@ -11,11 +13,6 @@ builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
 builder.Services
-    .AddOptions<PlacesCategoriesConfig>()
-    .BindConfiguration(PlacesCategoriesConfig.Section)
-    .ValidateDataAnnotations();
-
-builder.Services
     .AddOptions<SearchConfig>()
     .BindConfiguration(SearchConfig.Section)
     .ValidateDataAnnotations();
@@ -23,6 +20,16 @@ builder.Services
 builder.Services
     .AddOptions<OverpassConfig>()
     .BindConfiguration(OverpassConfig.Section)
+    .ValidateDataAnnotations();
+
+builder.Services
+    .AddOptions<CheckInConfig>()
+    .BindConfiguration(CheckInConfig.Section)
+    .ValidateDataAnnotations();
+
+builder.Services
+    .AddOptions<DatabaseConfig>()
+    .BindConfiguration(DatabaseConfig.Section)
     .ValidateDataAnnotations();
 
 // ---
@@ -38,7 +45,16 @@ builder.Services.AddHttpClient<IPlaceProvider, OverpassPlaceProvider>((sp, clien
 
 builder.Services.AddScoped<NearbyPlacesService>();
 
+builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
+builder.Services.AddSingleton<Migrator>();
+builder.Services.AddScoped<IPlacesRepository, PlacesRepository>();
+builder.Services.AddScoped<ICheckInsRepository, CheckInsRepository>();
+builder.Services.AddScoped<IPlacesCategoriesRepository, PlacesCategoriesRepository>();
+builder.Services.AddScoped<CheckInService>();
+
 var app = builder.Build();
+
+await app.Services.GetRequiredService<Migrator>().MigrateAsync();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

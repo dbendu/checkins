@@ -1,8 +1,9 @@
 ﻿using System.Globalization;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using Domain.Config;
+using Database;
 using Domain.Exceptions;
 using Domain.Models;
 using Microsoft.Extensions.Logging;
@@ -13,27 +14,27 @@ namespace Overpass;
 
 public interface IPlaceProvider
 {
-    Task<Place[]> FindNearbyAsync(
+    Task<IReadOnlyCollection<Place>> FindNearbyAsync(
         GeoPoint center,
         int radiusMeters,
-        IReadOnlyCollection<CategoryConfig> categories,
+        IReadOnlyCollection<PlaceCategory> categories,
         CancellationToken token);
 }
 
 public sealed class OverpassPlaceProvider(
     HttpClient http,
     IOptions<OverpassConfig> overpassConfig,
-    IOptions<PlacesCategoriesConfig> categoriesConfig,
+    IPlacesCategoriesRepository placesCategoriesRepository,
     ILogger<OverpassPlaceProvider> logger) : IPlaceProvider
 {
     private const string ProviderName = "Overpass";
 
     private readonly record struct Filter(string Key, string Value, string CategoryId);
 
-    public async Task<Place[]> FindNearbyAsync(
+    public async Task<IReadOnlyCollection<Place>> FindNearbyAsync(
         GeoPoint center,
         int radiusMeters,
-        IReadOnlyCollection<CategoryConfig> categories,
+        IReadOnlyCollection<PlaceCategory> categories,
         CancellationToken token)
     {
         var filters = MapFilters(categories).ToArray();
@@ -47,7 +48,7 @@ public sealed class OverpassPlaceProvider(
             await using var stream = await response.Content.ReadAsStreamAsync(token);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: token);
 
-            return Parse(document, filters).ToArray();
+            return await Parse(document, filters, token).ToListAsync(cancellationToken: token);
         }
         catch (JsonException ex)
         {
@@ -66,7 +67,7 @@ public sealed class OverpassPlaceProvider(
         }
     }
 
-    private IEnumerable<Filter> MapFilters(IReadOnlyCollection<CategoryConfig> categories)
+    private IEnumerable<Filter> MapFilters(IReadOnlyCollection<PlaceCategory> categories)
     {
         foreach (var category in categories)
         {
@@ -130,13 +131,15 @@ public sealed class OverpassPlaceProvider(
             : new PlaceProviderException(ProviderName, $"Overpass ответил {(int)status}.");
     }
 
-    private IEnumerable<Place> Parse(JsonDocument document, Filter[] filters)
+    private async IAsyncEnumerable<Place> Parse(JsonDocument document, Filter[] filters, [EnumeratorCancellation] CancellationToken token)
     {
         if (!document.RootElement.TryGetProperty("elements", out var elements) ||
             elements.ValueKind != JsonValueKind.Array)
         {
             yield break;
         }
+
+        var categories = await placesCategoriesRepository.Get(token);
 
         foreach (var element in elements.EnumerateArray())
         {
@@ -157,7 +160,7 @@ public sealed class OverpassPlaceProvider(
             if (!element.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String) continue;
             if (!element.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number) continue;
 
-            var category = MatchCategory(tags, filters);
+            var category = MatchCategory(tags, filters, categories);
 
             yield return new Place(
                 $"{type.GetString()}/{id.GetRawText()}",
@@ -170,14 +173,14 @@ public sealed class OverpassPlaceProvider(
     }
 
     /// <summary>Точка может подойти сразу под несколько фильтров -- берём первый совпавший.</summary>
-    private CategoryConfig MatchCategory(JsonElement tags, Filter[] filters)
+    private PlaceCategory MatchCategory(JsonElement tags, Filter[] filters, PlaceCategory[] categories)
     {
         foreach (var filter in filters)
         {
             if (TryGetString(tags, filter.Key, out var value) &&
                 string.Equals(value, filter.Value, StringComparison.OrdinalIgnoreCase))
             {
-                return categoriesConfig.Value.Categories.First(category => category.Id == filter.CategoryId);
+                return categories.First(category => category.Id == filter.CategoryId);
             }
         }
 

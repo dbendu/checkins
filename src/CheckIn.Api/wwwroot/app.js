@@ -7,23 +7,35 @@
 const $ = (id) => document.getElementById(id);
 
 const state = {
-  categories: [],      // [{ id, title }] из /api/categories
-  selected: new Set(), // выбранные id; пусто — искать во всех
+  categories: [],       // [{ id, title }] из /api/categories
+  selected: new Set(),  // выбранные id; пусто — искать во всех
   places: [],
   radiusMeters: null,
   searched: false,
   loading: false,
+  checkedIn: new Set(), // id мест, где отметились в этом сеансе
+  feed: [],             // мои отметки из /api/checkins
+  tab: "search",        // "search" | "feed"
 };
 
 // ---------- сеть ----------
 
-async function api(path) {
-  const response = await fetch(path, { credentials: "same-origin" });
+async function api(method, path, body) {
+  const response = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "same-origin",
+  });
+
+  // На 201 тела нет — json() на пустом ответе бросает, поэтому глушим.
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       (data && (data.detail || data.title)) || `Сервер ответил ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return data;
@@ -82,11 +94,12 @@ async function search() {
     query.set("lon", String(position.lon));
     for (const id of state.selected) query.append("category", id);
 
-    const result = await api(`/api/places/nearby?${query}`);
+    const result = await api("GET", `/api/places/nearby?${query}`);
 
     state.places = result.places;
     state.radiusMeters = result.radiusMeters;
     state.searched = true;
+    state.checkedIn.clear();
   } catch (error) {
     state.places = [];
     state.searched = false;
@@ -96,6 +109,65 @@ async function search() {
   } finally {
     state.loading = false;
     render();
+  }
+}
+
+// ---------- лента ----------
+
+async function loadFeed() {
+  try {
+    state.feed = await api("GET", "/api/checkins");
+  } catch (error) {
+    state.feed = [];
+    showNote(`Не удалось загрузить список отметок: ${error.message}`);
+  }
+}
+
+// ---------- отметка ----------
+
+async function checkIn(place, button) {
+  button.disabled = true;
+  button.textContent = "Отмечаю…";
+  showNote("");
+
+  try {
+    // Место уходит целиком: сервер не переспрашивает справочник и верит тому,
+    // что человеку показали. categoryId — идентификатор, а не название с экрана.
+    await api("POST", "/api/checkins", {
+      placeId: place.id,
+      name: place.name,
+      categoryId: place.categoryId,
+      lat: place.lat,
+      lon: place.lon,
+      address: place.address,
+    });
+
+    state.checkedIn.add(place.id);
+    await loadFeed();
+  } catch (error) {
+    showNote(error.message === "Failed to fetch"
+      ? "Нет связи с сервером."
+      : error.message);
+
+    // Кулдаун — это тоже «вы тут уже были»: кнопку возвращать незачем,
+    // повторное нажатие даст ту же ошибку.
+    if (error.status === 409) state.checkedIn.add(place.id);
+  } finally {
+    render();
+  }
+}
+
+// ---------- вкладки ----------
+
+const TABS = ["search", "feed"];
+
+function renderTabs() {
+  for (const tab of TABS) {
+    const active = state.tab === tab;
+
+    $(`tab-${tab}-btn`).classList.toggle("on", active);
+    $(`tab-${tab}-btn`).setAttribute("aria-selected", String(active));
+    $(`tab-${tab}`).hidden = !active;
   }
 }
 
@@ -179,22 +251,99 @@ function renderPlaces() {
     distance.className = "place-distance";
     distance.textContent = formatDistance(place.distanceMeters);
 
-    row.append(text, distance);
+    const button = document.createElement("button");
+    button.className = "primary check-in";
+
+    const done = state.checkedIn.has(place.id);
+    button.textContent = done ? "Отмечено" : "Я здесь";
+    button.disabled = done;
+
+    if (!done) button.addEventListener("click", () => checkIn(place, button));
+
+    row.append(text, distance, button);
+    box.appendChild(row);
+  }
+}
+
+function renderFeed() {
+  const box = $("feed");
+  box.textContent = "";
+
+  if (state.feed.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "Пока пусто. Отметьтесь в первом месте — оно появится здесь.";
+    box.appendChild(empty);
+    return;
+  }
+
+  for (const visit of state.feed) {
+    const row = document.createElement("div");
+    row.className = "visit";
+
+    const text = document.createElement("div");
+    text.className = "place-text";
+
+    const name = document.createElement("span");
+    name.className = "place-name";
+    name.textContent = visit.name;
+
+    const meta = document.createElement("span");
+    meta.className = "place-meta";
+    meta.textContent = visit.category;
+
+    text.append(name, meta);
+
+    const when = document.createElement("span");
+    when.className = "visit-when";
+    when.textContent = formatWhen(visit.createdAt);
+
+    row.append(text, when);
     box.appendChild(row);
   }
 }
 
 function render() {
+  renderTabs();
   renderCategories();
   renderPlaces();
+  renderFeed();
 
   const button = $("search");
   button.disabled = state.loading;
   button.textContent = state.loading ? "Ищу…" : "Найти рядом";
 
-  $("hint").textContent = state.radiusMeters
-    ? `Ищем в радиусе ${state.radiusMeters} м от вас.`
-    : "Нажмите «Найти рядом» — понадобится доступ к геолокации.";
+  if (state.tab === "feed") {
+    $("hint").textContent = state.feed.length
+      ? `${state.feed.length} ${plural(state.feed.length, "отметка", "отметки", "отметок")}.`
+      : "Здесь появятся места, где вы отметились.";
+  } else {
+    $("hint").textContent = state.radiusMeters
+      ? `Ищем в радиусе ${state.radiusMeters} м от вас.`
+      : "Нажмите «Найти рядом» — понадобится доступ к геолокации.";
+  }
+}
+
+// 1 отметка, 2 отметки, 5 отметок.
+function plural(n, one, few, many) {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
+// Сервер отдаёт время в UTC, показываем в местном.
+function formatWhen(iso) {
+  const date = new Date(iso);
+  const today = new Date().toDateString() === date.toDateString();
+
+  const time = date.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+  if (today) return `сегодня, ${time}`;
+
+  return `${date.toLocaleDateString("ru", { day: "numeric", month: "short" })}, ${time}`;
 }
 
 function formatDistance(meters) {
@@ -205,7 +354,16 @@ function formatDistance(meters) {
 
 $("search").addEventListener("click", search);
 
-api("/api/categories")
-  .then((categories) => { state.categories = categories; })
-  .catch((error) => showNote(`Не удалось загрузить категории: ${error.message}`))
-  .finally(render);
+for (const tab of TABS) {
+  $(`tab-${tab}-btn`).addEventListener("click", () => {
+    state.tab = tab;
+    render();
+  });
+}
+
+Promise.all([
+  api("GET", "/api/categories")
+    .then((categories) => { state.categories = categories; })
+    .catch((error) => showNote(`Не удалось загрузить категории: ${error.message}`)),
+  loadFeed(),
+]).finally(render);

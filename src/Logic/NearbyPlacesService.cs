@@ -1,3 +1,4 @@
+using Database;
 using Domain.Config;
 using Domain.Exceptions;
 using Domain.Models;
@@ -8,7 +9,7 @@ namespace Logic;
 
 public sealed class NearbyPlacesService(
     IPlaceProvider provider,
-    IOptions<PlacesCategoriesConfig> categoriesConfig,
+    IPlacesCategoriesRepository placesCategoriesRepository,
     IOptions<SearchConfig> searchConfig)
 {
     public async Task<NearbySearchResult> FindAsync(
@@ -16,7 +17,7 @@ public sealed class NearbyPlacesService(
         IReadOnlyCollection<string>? selectedCategories,
         CancellationToken token)
     {
-        var categories = SelectCategories(selectedCategories);
+        var categories = await SelectCategories(selectedCategories, token);
 
         var places = await provider.FindNearbyAsync(center, searchConfig.Value.RadiusMeters, categories, token);
 
@@ -31,16 +32,20 @@ public sealed class NearbyPlacesService(
         );
     }
 
-    private IReadOnlyCollection<CategoryConfig> SelectCategories(IReadOnlyCollection<string>? selectedCategories)
+    private async Task<IReadOnlyCollection<PlaceCategory>> SelectCategories(
+        IReadOnlyCollection<string>? selectedCategories,
+        CancellationToken token)
     {
-        if (selectedCategories?.Count is null or 0)
-            return categoriesConfig.Value.Categories;
+        var categories = await placesCategoriesRepository.Get(token);
 
-        var selected = new List<CategoryConfig>();
+        if (selectedCategories?.Count is null or 0)
+            return categories;
+
+        var selected = new List<PlaceCategory>();
 
         foreach (var selectedCategory in selectedCategories.Distinct())
         {
-            var category = categoriesConfig.Value.Categories
+            var category = categories
                 .FirstOrDefault(category => category.Id.Equals(selectedCategory, StringComparison.OrdinalIgnoreCase));
 
             if (category is null)

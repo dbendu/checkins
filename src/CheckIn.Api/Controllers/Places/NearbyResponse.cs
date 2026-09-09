@@ -8,6 +8,7 @@ public sealed record NearbyResponse(
 public sealed record NearbyPlaceResponse(
     string Id,
     string Name,
+    string CategoryId,
     string Category,
     string? Address,
     double Lat,

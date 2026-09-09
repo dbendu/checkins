@@ -1,11 +1,9 @@
-﻿using Domain.Config;
-
-namespace Domain.Models;
+﻿namespace Domain.Models;
 
 public record Place(
     string Id,
     string Name,
-    CategoryConfig Category,
+    PlaceCategory Category,
     GeoPoint Location,
     string? Address
 );

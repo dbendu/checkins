@@ -14,21 +14,36 @@
     <p id="hint" class="sub">Загружаю…</p>
   </header>
 
-  <section class="card">
-    <div id="categories" class="chips" role="group" aria-label="Категории мест"></div>
+  <div class="tabs" role="tablist">
+    <button id="tab-search-btn" class="tab" role="tab" aria-controls="tab-search">Поиск мест</button>
+    <button id="tab-feed-btn" class="tab" role="tab" aria-controls="tab-feed">Мои отметки</button>
+  </div>
 
-    <div class="row">
-      <button id="search" class="primary">Найти рядом</button>
-    </div>
+  <!-- Сообщения выше вкладок: ошибка поиска и ошибка загрузки отметок
+       должны быть видны, на какой бы вкладке человек ни находился. -->
+  <p id="note" class="note" role="status" hidden></p>
 
-    <p id="note" class="note" role="status" hidden></p>
-  </section>
+  <div id="tab-search" role="tabpanel" aria-labelledby="tab-search-btn">
+    <section class="card">
+      <div id="categories" class="chips" role="group" aria-label="Категории мест"></div>
 
-  <!-- Данные OpenStreetMap отделены рамкой: рядом с ними должна быть видна строка авторства. -->
-  <section class="card source" id="results" hidden>
-    <div id="places" class="places"></div>
-    <p class="attribution">Данные о местах — © участники OpenStreetMap</p>
-  </section>
+      <div class="row">
+        <button id="search" class="primary">Найти рядом</button>
+      </div>
+    </section>
+
+    <!-- Данные OpenStreetMap отделены рамкой: рядом с ними должна быть видна строка авторства. -->
+    <section class="card source" id="results" hidden>
+      <div id="places" class="places"></div>
+      <p class="attribution">Данные о местах — © участники OpenStreetMap</p>
+    </section>
+  </div>
+
+  <div id="tab-feed" role="tabpanel" aria-labelledby="tab-feed-btn" hidden>
+    <section class="card">
+      <div id="feed" class="feed"></div>
+    </section>
+  </div>
 
 </main>
 <script src="/app.js"></script>
