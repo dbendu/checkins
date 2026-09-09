@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.git/
+.idea/
+.env
+*.db
+*.db-shm
+*.db-wal
+keys/
+README.md

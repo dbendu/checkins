@@ -1,0 +1,39 @@
+services:
+  checkin:
+    build: .
+    image: checkin
+    container_name: checkin
+    # tini как PID 1: корректно пробрасывает SIGTERM и подбирает зомби-процессы
+    init: true
+    restart: unless-stopped
+    # Наружу порт не выставляем: приложение видно только Caddy по сети web.
+    # Для отладки напрямую: docker compose exec checkin wget -qO- localhost:8080/api/categories
+    expose:
+      - "8080"
+    environment:
+      # user-secrets в проде не читаются — токен приходит отсюда
+      Telegram__BotToken: "${Telegram__BotToken:?задайте токен бота в .env}"
+    volumes:
+      - checkin-data:/data
+      # Радиус, категории и их сопоставление с тегами OSM правятся на сервере
+      # без пересборки образа: поправить файл и сделать
+      # docker compose restart checkin. Подхватить правку на лету нельзя —
+      # уведомления об изменении файла через bind-mount не доходят.
+      - ./src/CheckIn.Api/appsettings.json:/app/appsettings.json:ro
+    networks:
+      - web
+    # Явные DNS: на хостах с systemd-resolved в контейнер уезжает resolv.conf
+    # с адресом 127.0.0.53, а внутри контейнера по этому адресу никого нет.
+    # Приложению DNS нужен, чтобы ходить в Overpass за местами.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+# Сеть создаётся отдельно, вместе с edge:
+#     docker network create web
+networks:
+  web:
+    external: true
+
+volumes:
+  checkin-data:
