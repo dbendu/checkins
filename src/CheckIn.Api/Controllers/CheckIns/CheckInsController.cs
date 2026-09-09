@@ -1,13 +1,16 @@
+using CheckIn.Api.Auth;
 using Database;
 using Domain.Exceptions;
 using Domain.Models;
 using Logic;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CheckIn.Api.Controllers.CheckIns;
 
 [ApiController]
 [Route("api/checkins")]
+[Authorize]
 public sealed class CheckInsController(
     CheckInService checkIns,
     IPlacesCategoriesRepository placesCategoriesRepository) : ControllerBase
@@ -16,7 +19,7 @@ public sealed class CheckInsController(
     public async Task<ActionResult<CheckInResponse[]>> List(
         [FromQuery] int take, CancellationToken token)
     {
-        var items = await checkIns.ListAsync(take, token);
+        var items = await checkIns.ListAsync(User.RequireUserId(), take, token);
 
         var response = items
             .Select(item => new CheckInResponse(
@@ -49,7 +52,7 @@ public sealed class CheckInsController(
 
         try
         {
-            await checkIns.CreateAsync(place, token);
+            await checkIns.CreateAsync(User.RequireUserId(), place, token);
             return StatusCode(StatusCodes.Status201Created);
         }
         catch (CheckInTooSoonException e)

@@ -1,5 +1,7 @@
 using Database;
 using Database.Config;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Domain.Config;
 using Logic;
 using Microsoft.Extensions.Options;
@@ -32,6 +34,46 @@ builder.Services
     .BindConfiguration(DatabaseConfig.Section)
     .ValidateDataAnnotations();
 
+builder.Services
+    .AddOptions<TelegramConfig>()
+    .BindConfiguration(TelegramConfig.Section)
+    .ValidateDataAnnotations();
+
+// Ключами Data Protection подписывается cookie. По умолчанию они живут в памяти
+// процесса и умирают вместе с ним -- каждый перезапуск разлогинивал бы всех.
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(Directory.CreateDirectory(builder.Configuration["DataProtection:KeysPath"]!))
+    .SetApplicationName("checkin");
+
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "checkin";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest // на localhost https нет
+            : CookieSecurePolicy.Always;
+
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+        options.SlidingExpiration = true;
+
+        options.Events.OnRedirectToLogin = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 // ---
 
 builder.Services.AddHttpClient<IPlaceProvider, OverpassPlaceProvider>((sp, client) =>
@@ -51,6 +93,9 @@ builder.Services.AddScoped<IPlacesRepository, PlacesRepository>();
 builder.Services.AddScoped<ICheckInsRepository, CheckInsRepository>();
 builder.Services.AddScoped<IPlacesCategoriesRepository, PlacesCategoriesRepository>();
 builder.Services.AddScoped<CheckInService>();
+builder.Services.AddScoped<IUsersRepository, UsersRepository>();
+builder.Services.AddSingleton<TelegramLoginVerifier>();
+builder.Services.AddSingleton(TimeProvider.System);
 
 var app = builder.Build();
 
@@ -62,6 +107,9 @@ app.UseStatusCodePages();
 // Статика лежит в wwwroot и раздаётся как есть: ни сборки, ни зависимостей.
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

@@ -16,6 +16,8 @@ const state = {
   checkedIn: new Set(), // id мест, где отметились в этом сеансе
   feed: [],             // мои отметки из /api/checkins
   tab: "search",        // "search" | "feed"
+  me: null,             // профиль из /api/auth/me, null — не вошли
+  auth: null,           // { botUsername, devLoginAvailable } из /api/auth/config
 };
 
 // ---------- сеть ----------
@@ -45,6 +47,72 @@ function showNote(text) {
   const el = $("note");
   el.textContent = text || "";
   el.hidden = !text;
+}
+
+// ---------- вход ----------
+
+// Виджет зовёт эту функцию по имени, поэтому она глобальная.
+window.onTelegramAuth = (user) => {
+  api("POST", "/api/auth/telegram", user)
+    .then(async (me) => {
+      state.me = me;
+      showNote("");
+      await loadFeed();
+    })
+    .catch((error) => showNote(error.message))
+    .finally(render);
+};
+
+function mountTelegramWidget(botUsername) {
+  const box = $("tg-widget");
+  if (box.childElementCount > 0) return; // вставляем один раз, а не на каждый рендер
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = "https://telegram.org/js/telegram-widget.js?22";
+  script.setAttribute("data-telegram-login", botUsername);
+  script.setAttribute("data-size", "large");
+  script.setAttribute("data-userpic", "false");
+  // data-onauth, а не data-auth-url: страница не перезагружается, и в истории
+  // браузера не остаётся ссылки с параметрами входа.
+  script.setAttribute("data-onauth", "onTelegramAuth(user)");
+  box.appendChild(script);
+}
+
+async function loadMe() {
+  try {
+    state.me = await api("GET", "/api/auth/me");
+  } catch (error) {
+    if (error.status !== 401) throw error;
+    state.me = null;
+  }
+}
+
+async function devLogin() {
+  try {
+    state.me = await api("POST", "/api/auth/dev-login");
+    showNote("");
+    await loadFeed();
+  } catch (error) {
+    showNote(error.message);
+  } finally {
+    render();
+  }
+}
+
+async function logout() {
+  try {
+    await api("POST", "/api/auth/logout");
+  } catch (error) {
+    showNote(error.message);
+  }
+
+  state.me = null;
+  state.feed = [];
+  state.places = [];
+  state.searched = false;
+  state.checkedIn.clear();
+  render();
 }
 
 // ---------- геолокация ----------
@@ -115,6 +183,11 @@ async function search() {
 // ---------- лента ----------
 
 async function loadFeed() {
+  if (!state.me) {
+    state.feed = [];
+    return;
+  }
+
   try {
     state.feed = await api("GET", "/api/checkins");
   } catch (error) {
@@ -161,13 +234,50 @@ async function checkIn(place, button) {
 
 const TABS = ["search", "feed"];
 
+function renderAuth() {
+  const inside = Boolean(state.me);
+
+  $("auth-card").hidden = inside;
+  $("me-card").hidden = !inside;
+  $("tabs").hidden = !inside;
+  $("tab-search").hidden = !inside || state.tab !== "search";
+  $("tab-feed").hidden = !inside || state.tab !== "feed";
+
+  if (inside) {
+    $("me-name").textContent = state.me.displayName;
+    $("me-username").textContent = state.me.username ? `@${state.me.username}` : "";
+
+    const photo = $("me-photo");
+    photo.hidden = !state.me.photoUrl;
+    if (state.me.photoUrl) photo.src = state.me.photoUrl;
+
+    return;
+  }
+
+  // Не вошли: показываем то, чем вообще можно войти.
+  $("dev-login").hidden = !state.auth?.devLoginAvailable;
+
+  const hint = $("auth-hint");
+
+  if (state.auth?.botUsername) {
+    mountTelegramWidget(state.auth.botUsername);
+    hint.textContent =
+      "Кнопка не появилась? У бота должен быть прописан домен этого сайта: /setdomain у @BotFather. " +
+      "На localhost виджет не работает вовсе.";
+    hint.hidden = false;
+  } else {
+    hint.textContent = "Вход через Telegram не настроен: на сервере не задано имя бота.";
+    hint.hidden = false;
+  }
+}
+
 function renderTabs() {
   for (const tab of TABS) {
     const active = state.tab === tab;
 
     $(`tab-${tab}-btn`).classList.toggle("on", active);
     $(`tab-${tab}-btn`).setAttribute("aria-selected", String(active));
-    $(`tab-${tab}`).hidden = !active;
+    $(`tab-${tab}`).hidden = !active || !state.me;
   }
 }
 
@@ -304,6 +414,7 @@ function renderFeed() {
 }
 
 function render() {
+  renderAuth();
   renderTabs();
   renderCategories();
   renderPlaces();
@@ -312,6 +423,11 @@ function render() {
   const button = $("search");
   button.disabled = state.loading;
   button.textContent = state.loading ? "Ищу…" : "Найти рядом";
+
+  if (!state.me) {
+    $("hint").textContent = "Войдите, чтобы отмечаться в местах.";
+    return;
+  }
 
   if (state.tab === "feed") {
     $("hint").textContent = state.feed.length
@@ -353,6 +469,8 @@ function formatDistance(meters) {
 // ---------- старт ----------
 
 $("search").addEventListener("click", search);
+$("dev-login").addEventListener("click", devLogin);
+$("logout").addEventListener("click", logout);
 
 for (const tab of TABS) {
   $(`tab-${tab}-btn`).addEventListener("click", () => {
@@ -361,9 +479,20 @@ for (const tab of TABS) {
   });
 }
 
-Promise.all([
-  api("GET", "/api/categories")
-    .then((categories) => { state.categories = categories; })
-    .catch((error) => showNote(`Не удалось загрузить категории: ${error.message}`)),
-  loadFeed(),
-]).finally(render);
+(async () => {
+  try {
+    [state.auth, state.categories] = await Promise.all([
+      api("GET", "/api/auth/config"),
+      api("GET", "/api/categories"),
+    ]);
+
+    await loadMe();
+    await loadFeed();
+  } catch (error) {
+    showNote(error.message === "Failed to fetch"
+      ? "Нет связи с сервером."
+      : error.message);
+  } finally {
+    render();
+  }
+})();

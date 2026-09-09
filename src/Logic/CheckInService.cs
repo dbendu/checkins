@@ -11,12 +11,10 @@ public sealed class CheckInService(
     ICheckInsRepository checkIns,
     IOptions<CheckInConfig> config)
 {
-    private const long FakeUserId = 1;
+    public Task<UserCheckIn[]> ListAsync(long userId, int take, CancellationToken token) =>
+        checkIns.ListByUserAsync(userId, take, token);
 
-    public Task<UserCheckIn[]> ListAsync(int take, CancellationToken token) =>
-        checkIns.ListByUserAsync(FakeUserId, take, token);
-
-    public async Task CreateAsync(Place place, CancellationToken token)
+    public async Task CreateAsync(long userId, Place place, CancellationToken token)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -25,12 +23,12 @@ public sealed class CheckInService(
         // разрешим мы отметку или нет.
         var placeId = await places.UpsertAsync(place, now, token);
 
-        var lastCreatedAt = await checkIns.LastCreatedAtAsync(FakeUserId, placeId, token);
+        var lastCreatedAt = await checkIns.LastCreatedAtAsync(userId, placeId, token);
         var cooldown = TimeSpan.FromMinutes(config.Value.CooldownMinutes);
 
         if (lastCreatedAt is not null && now - lastCreatedAt.Value < cooldown)
             throw new CheckInTooSoonException(lastCreatedAt.Value + cooldown);
 
-        await checkIns.AddAsync(FakeUserId, placeId, now, token);
+        await checkIns.AddAsync(userId, placeId, now, token);
     }
 }

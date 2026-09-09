@@ -14,7 +14,28 @@
     <p id="hint" class="sub">Загружаю…</p>
   </header>
 
-  <div class="tabs" role="tablist">
+  <!-- Вход. Виджет вставляется скриптом: имя бота приходит с сервера,
+       и держать его ещё и в разметке значило бы дублировать настройку. -->
+  <section class="card" id="auth-card" hidden>
+    <h2 class="quiet">Вход</h2>
+    <p class="sub">Отмечаться можно только под своим аккаунтом Telegram.</p>
+
+    <div id="tg-widget" class="tg-widget"></div>
+
+    <p id="auth-hint" class="sub" hidden></p>
+    <button id="dev-login" class="ghost" hidden>Войти как разработчик</button>
+  </section>
+
+  <section class="card me" id="me-card" hidden>
+    <img id="me-photo" class="avatar" alt="" hidden>
+    <div class="me-text">
+      <strong id="me-name"></strong>
+      <span id="me-username" class="sub"></span>
+    </div>
+    <button id="logout" class="linky">выйти</button>
+  </section>
+
+  <div class="tabs" role="tablist" id="tabs" hidden>
     <button id="tab-search-btn" class="tab" role="tab" aria-controls="tab-search">Поиск мест</button>
     <button id="tab-feed-btn" class="tab" role="tab" aria-controls="tab-feed">Мои отметки</button>
   </div>
