@@ -1,0 +1,129 @@
+:root {
+  --ink: #1c1a17;
+  --muted: #6b665f;
+  --faint: #8b857c;
+  --line: #e6e3de;
+  --paper: #f5f4f1;
+  --accent: #2f6b4f;
+  --accent-soft: #e8f1ec;
+  --accent-line: #c8ded3;
+  --warn: #9c4a35;
+}
+
+* { box-sizing: border-box; }
+
+/* Любой display в правилах ниже перебил бы атрибут hidden — держим его сильнее. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.page { max-width: 680px; margin: 0 auto; padding: 16px; }
+
+.head { margin-bottom: 16px; }
+.head h1 {
+  font: 400 26px/1.2 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.sub { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.source { background: #fcfcfb; }
+
+.note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--warn);
+}
+
+/* ---------- кнопки ---------- */
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 14px;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ---------- категории ---------- */
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--muted);
+}
+.chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* ---------- места ---------- */
+
+.places { display: flex; flex-direction: column; }
+
+.place {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.place:last-child { border-bottom: 0; }
+
+.place-text { min-width: 0; flex: 1; }
+.place-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place-meta { font-size: 12px; color: var(--faint); }
+
+/* Адрес есть не у всех точек OSM — заглушку показываем приглушённее названия. */
+.place-meta .unknown { font-style: italic; }
+
+.place-distance {
+  font-size: 13px;
+  color: var(--muted);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.attribution {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.empty { padding: 12px 2px; color: var(--muted); font-size: 13px; }

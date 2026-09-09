@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Что рядом</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="page">
+
+  <header class="head">
+    <h1>Что рядом</h1>
+    <p id="hint" class="sub">Загружаю…</p>
+  </header>
+
+  <section class="card">
+    <div id="categories" class="chips" role="group" aria-label="Категории мест"></div>
+
+    <div class="row">
+      <button id="search" class="primary">Найти рядом</button>
+    </div>
+
+    <p id="note" class="note" role="status" hidden></p>
+  </section>
+
+  <!-- Данные OpenStreetMap отделены рамкой: рядом с ними должна быть видна строка авторства. -->
+  <section class="card source" id="results" hidden>
+    <div id="places" class="places"></div>
+    <p class="attribution">Данные о местах — © участники OpenStreetMap</p>
+  </section>
+
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
