@@ -113,6 +113,14 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* Адрес есть не у всех точек OSM — заглушку показываем приглушённее названия. */
 .place-meta .unknown { font-style: italic; }
 
+/* Отказ в отметке — здесь же, в строке места, а не общим баннером наверху. */
+.place-error {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--warn);
+}
+
 .place-distance {
   font-size: 13px;
   color: var(--muted);
@@ -144,22 +152,29 @@ button:disabled { opacity: 0.5; cursor: default; }
   margin: 0 0 4px;
 }
 
-.tg-widget { margin-top: 10px; min-height: 40px; }
+.auth-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field span { font-size: 13px; color: var(--muted); }
+
+input[type="text"],
+input[type="password"] {
+  /* 16 пикселей обязательны: при меньшем размере iOS зумит страницу
+     на фокусе поля, и вёрстка уезжает. */
+  font: 16px/1.4 inherit;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .me { display: flex; align-items: center; gap: 10px; }
 .me-text { display: flex; flex-direction: column; min-width: 0; }
-.me-text .sub { margin: 0; }
 .me .linky { margin-left: auto; }
-
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex: none;
-}
-
-.ghost { background: #fff; }
 
 .linky {
   border: 0;
@@ -215,4 +230,62 @@ button:disabled { opacity: 0.5; cursor: default; }
   font-size: 12px;
   color: var(--faint);
   flex: none;
+}
+
+/* ---------- карта ---------- */
+
+.map {
+  height: 60vh;
+  /* Ниже 260 пикселей карта бесполезна, выше 520 — лезет за экран ноутбука. */
+  min-height: 260px;
+  max-height: 520px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pin {
+  /* Именно inline-flex: Яндекс кладёт макет метки в контейнер нулевой ширины,
+     и блочный элемент внутри него растянулся бы в ноль, а не по содержимому. */
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  /* Маркер ставится левым верхним углом на точку — сдвигаем так,
+     чтобы на месте оказался низ по центру. */
+  transform: translate(-50%, -100%);
+  cursor: default;
+}
+
+.ava {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+/* Заглушка вместо фотографии: буква имени на цвете от id. */
+.ava-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Своя точка на карте: кружок, а не аватарка — чтобы не путать с отметками. */
+.here {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+  /* Центром на точку, в отличие от метки-стопки, которая стоит над ней. */
+  transform: translate(-50%, -50%);
 }

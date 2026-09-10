@@ -16,10 +16,9 @@ public sealed class CheckInsController(
     IPlacesCategoriesRepository placesCategoriesRepository) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<CheckInResponse[]>> List(
-        [FromQuery] int take, CancellationToken token)
+    public async Task<ActionResult<CheckInResponse[]>> List(CancellationToken token)
     {
-        var items = await checkIns.ListAsync(User.RequireUserId(), take, token);
+        var items = await checkIns.ListAsync(User.RequireUserId(), token);
 
         var response = items
             .Select(item => new CheckInResponse(
@@ -33,6 +32,39 @@ public sealed class CheckInsController(
                     item.CreatedAt
                 )
             )
+            .ToArray();
+
+        return Ok(response);
+    }
+
+    [HttpGet("map")]
+    public async Task<ActionResult<VisitedPlaceResponse[]>> Map(CancellationToken token)
+    {
+        var visits = await checkIns.ListAllAsync(token);
+
+        var response = visits
+            .GroupBy(visit => visit.Place.Id)
+            .Select(group =>
+            {
+                var place = group.First().Place;
+
+                return new VisitedPlaceResponse(
+                    place.Id,
+                    place.Name,
+                    place.Category.Title,
+                    place.Address,
+                    place.Location.Lat,
+                    place.Location.Lon,
+                    group
+                        .OrderByDescending(visit => visit.CreatedAt)
+                        .Select(visit => new VisitorResponse(
+                            visit.Visitor.Id,
+                            visit.Visitor.DisplayName,
+                            visit.Visitor.HasPhoto,
+                            visit.CreatedAt))
+                        .ToArray()
+                );
+            })
             .ToArray();
 
         return Ok(response);

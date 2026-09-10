@@ -14,23 +14,40 @@
     <p id="hint" class="sub">Загружаю…</p>
   </header>
 
-  <!-- Вход. Виджет вставляется скриптом: имя бота приходит с сервера,
-       и держать его ещё и в разметке значило бы дублировать настройку. -->
+  <!-- Одна форма на вход и регистрацию: поля почти те же, а два отдельных экрана
+       на четыре поля — лишняя навигация. Вход через Telegram сохранён
+       в ветке telegram-auth. -->
   <section class="card" id="auth-card" hidden>
-    <h2 class="quiet">Вход</h2>
-    <p class="sub">Отмечаться можно только под своим аккаунтом Telegram.</p>
+    <h2 class="quiet" id="auth-title">Вход</h2>
 
-    <div id="tg-widget" class="tg-widget"></div>
+    <form id="auth-form" class="auth-form">
+      <label class="field">
+        <span>Логин</span>
+        <input id="auth-login" type="text" autocomplete="username" required>
+      </label>
 
-    <p id="auth-hint" class="sub" hidden></p>
-    <button id="dev-login" class="ghost" hidden>Войти как разработчик</button>
+      <label class="field">
+        <span>Пароль</span>
+        <input id="auth-password" type="password" autocomplete="current-password" required>
+      </label>
+
+      <label class="field" id="auth-name-field" hidden>
+        <span>Как вас показывать</span>
+        <input id="auth-name" type="text" autocomplete="nickname">
+      </label>
+
+      <div class="row">
+        <button type="submit" class="primary" id="auth-submit">Войти</button>
+        <button type="button" class="linky" id="auth-toggle">Зарегистрироваться</button>
+      </div>
+    </form>
+
+    <p id="auth-note" class="note" role="status" hidden></p>
   </section>
 
   <section class="card me" id="me-card" hidden>
-    <img id="me-photo" class="avatar" alt="" hidden>
     <div class="me-text">
       <strong id="me-name"></strong>
-      <span id="me-username" class="sub"></span>
     </div>
     <button id="logout" class="linky">выйти</button>
   </section>
@@ -38,6 +55,7 @@
   <div class="tabs" role="tablist" id="tabs" hidden>
     <button id="tab-search-btn" class="tab" role="tab" aria-controls="tab-search">Поиск мест</button>
     <button id="tab-feed-btn" class="tab" role="tab" aria-controls="tab-feed">Мои отметки</button>
+    <button id="tab-map-btn" class="tab" role="tab" aria-controls="tab-map">Карта</button>
   </div>
 
   <!-- Сообщения выше вкладок: ошибка поиска и ошибка загрузки отметок
@@ -63,6 +81,16 @@
   <div id="tab-feed" role="tabpanel" aria-labelledby="tab-feed-btn" hidden>
     <section class="card">
       <div id="feed" class="feed"></div>
+    </section>
+  </div>
+
+  <!-- Карта общая: на ней отметки всех пользователей. Контейнер пустой —
+       карту рисует SDK Яндекса, который подгружается при первом открытии вкладки. -->
+  <div id="tab-map" role="tabpanel" aria-labelledby="tab-map-btn" hidden>
+    <section class="card">
+      <p id="map-note" class="note" role="status" hidden></p>
+      <p id="map-empty" class="empty" hidden>Пока никто нигде не отметился.</p>
+      <div id="map" class="map"></div>
     </section>
   </div>
 

@@ -11,8 +11,9 @@ public sealed class CheckInService(
     ICheckInsRepository checkIns,
     IOptions<CheckInConfig> config)
 {
-    public Task<UserCheckIn[]> ListAsync(long userId, int take, CancellationToken token) =>
-        checkIns.ListByUserAsync(userId, take, token);
+    public Task<UserCheckIn[]> ListAsync(long userId, CancellationToken token) => checkIns.ListByUserAsync(userId, token);
+
+    public Task<PlaceVisit[]> ListAllAsync(CancellationToken token) => checkIns.ListAllAsync(token);
 
     public async Task CreateAsync(long userId, Place place, CancellationToken token)
     {

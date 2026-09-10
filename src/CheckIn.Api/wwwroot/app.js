@@ -14,10 +14,12 @@ const state = {
   searched: false,
   loading: false,
   checkedIn: new Set(), // id мест, где отметились в этом сеансе
+  placeErrors: new Map(), // id места -> что пошло не так при отметке именно в нём
   feed: [],             // мои отметки из /api/checkins
-  tab: "search",        // "search" | "feed"
+  visits: [],           // места с отметками всех пользователей, для карты
+  tab: "search",        // "search" | "feed" | "map"
   me: null,             // профиль из /api/auth/me, null — не вошли
-  auth: null,           // { botUsername, devLoginAvailable } из /api/auth/config
+  mode: "login",        // "login" | "register" — какой режим формы входа
 };
 
 // ---------- сеть ----------
@@ -51,32 +53,10 @@ function showNote(text) {
 
 // ---------- вход ----------
 
-// Виджет зовёт эту функцию по имени, поэтому она глобальная.
-window.onTelegramAuth = (user) => {
-  api("POST", "/api/auth/telegram", user)
-    .then(async (me) => {
-      state.me = me;
-      showNote("");
-      await loadFeed();
-    })
-    .catch((error) => showNote(error.message))
-    .finally(render);
-};
-
-function mountTelegramWidget(botUsername) {
-  const box = $("tg-widget");
-  if (box.childElementCount > 0) return; // вставляем один раз, а не на каждый рендер
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = "https://telegram.org/js/telegram-widget.js?22";
-  script.setAttribute("data-telegram-login", botUsername);
-  script.setAttribute("data-size", "large");
-  script.setAttribute("data-userpic", "false");
-  // data-onauth, а не data-auth-url: страница не перезагружается, и в истории
-  // браузера не остаётся ссылки с параметрами входа.
-  script.setAttribute("data-onauth", "onTelegramAuth(user)");
-  box.appendChild(script);
+function showAuthNote(text) {
+  const el = $("auth-note");
+  el.textContent = text || "";
+  el.hidden = !text;
 }
 
 async function loadMe() {
@@ -88,16 +68,45 @@ async function loadMe() {
   }
 }
 
-async function devLogin() {
+async function submitAuth(event) {
+  event.preventDefault();
+
+  const login = $("auth-login").value.trim();
+  const password = $("auth-password").value;
+  const displayName = $("auth-name").value.trim();
+
+  const register = state.mode === "register";
+  const button = $("auth-submit");
+
+  button.disabled = true;
+  showAuthNote("");
+
   try {
-    state.me = await api("POST", "/api/auth/dev-login");
+    state.me = register
+      // Имя не спрашиваем дважды: пустое — значит показываем логин.
+      ? await api("POST", "/api/auth/register", { login, password, displayName: displayName || login })
+      : await api("POST", "/api/auth/login", { login, password });
+
+    // Пароль не оставляем в поле: форма ещё живёт в DOM под скрытой карточкой.
+    $("auth-password").value = "";
     showNote("");
+
     await loadFeed();
+    await loadVisits();
   } catch (error) {
-    showNote(error.message);
+    showAuthNote(error.message === "Failed to fetch"
+      ? "Нет связи с сервером."
+      : error.message);
   } finally {
+    button.disabled = false;
     render();
   }
+}
+
+function toggleAuthMode() {
+  state.mode = state.mode === "login" ? "register" : "login";
+  showAuthNote("");
+  render();
 }
 
 async function logout() {
@@ -109,6 +118,7 @@ async function logout() {
 
   state.me = null;
   state.feed = [];
+  state.visits = [];
   state.places = [];
   state.searched = false;
   state.checkedIn.clear();
@@ -168,6 +178,7 @@ async function search() {
     state.radiusMeters = result.radiusMeters;
     state.searched = true;
     state.checkedIn.clear();
+    state.placeErrors.clear();
   } catch (error) {
     state.places = [];
     state.searched = false;
@@ -196,12 +207,29 @@ async function loadFeed() {
   }
 }
 
+// Карта общая, поэтому и список для неё — общий, а не только свои отметки.
+async function loadVisits() {
+  if (!state.me) {
+    state.visits = [];
+    return;
+  }
+
+  try {
+    state.visits = await api("GET", "/api/checkins/map");
+  } catch (error) {
+    state.visits = [];
+    showNote(`Не удалось загрузить отметки для карты: ${error.message}`);
+  }
+}
+
 // ---------- отметка ----------
 
 async function checkIn(place, button) {
   button.disabled = true;
   button.textContent = "Отмечаю…";
-  showNote("");
+
+  // Ошибка от прошлой попытки в этом же месте больше не актуальна.
+  state.placeErrors.delete(place.id);
 
   try {
     // Место уходит целиком: сервер не переспрашивает справочник и верит тому,
@@ -217,8 +245,11 @@ async function checkIn(place, button) {
 
     state.checkedIn.add(place.id);
     await loadFeed();
+    await loadVisits();
   } catch (error) {
-    showNote(error.message === "Failed to fetch"
+    // Ошибка относится к конкретной строке списка, а не ко всей странице:
+    // показываем её там, где человек нажимал, а не общим баннером наверху.
+    state.placeErrors.set(place.id, error.message === "Failed to fetch"
       ? "Нет связи с сервером."
       : error.message);
 
@@ -230,9 +261,7 @@ async function checkIn(place, button) {
   }
 }
 
-// ---------- вкладки ----------
-
-const TABS = ["search", "feed"];
+// ---------- отрисовка ----------
 
 function renderAuth() {
   const inside = Boolean(state.me);
@@ -240,36 +269,27 @@ function renderAuth() {
   $("auth-card").hidden = inside;
   $("me-card").hidden = !inside;
   $("tabs").hidden = !inside;
-  $("tab-search").hidden = !inside || state.tab !== "search";
-  $("tab-feed").hidden = !inside || state.tab !== "feed";
 
   if (inside) {
     $("me-name").textContent = state.me.displayName;
-    $("me-username").textContent = state.me.username ? `@${state.me.username}` : "";
-
-    const photo = $("me-photo");
-    photo.hidden = !state.me.photoUrl;
-    if (state.me.photoUrl) photo.src = state.me.photoUrl;
-
     return;
   }
 
-  // Не вошли: показываем то, чем вообще можно войти.
-  $("dev-login").hidden = !state.auth?.devLoginAvailable;
+  const register = state.mode === "register";
 
-  const hint = $("auth-hint");
+  $("auth-title").textContent = register ? "Регистрация" : "Вход";
+  $("auth-submit").textContent = register ? "Зарегистрироваться" : "Войти";
+  $("auth-toggle").textContent = register ? "У меня уже есть аккаунт" : "Зарегистрироваться";
+  $("auth-name-field").hidden = !register;
 
-  if (state.auth?.botUsername) {
-    mountTelegramWidget(state.auth.botUsername);
-    hint.textContent =
-      "Кнопка не появилась? У бота должен быть прописан домен этого сайта: /setdomain у @BotFather. " +
-      "На localhost виджет не работает вовсе.";
-    hint.hidden = false;
-  } else {
-    hint.textContent = "Вход через Telegram не настроен: на сервере не задано имя бота.";
-    hint.hidden = false;
-  }
+  // Подсказка менеджеру паролей: новый пароль он предложит сгенерировать,
+  // существующий — подставить.
+  $("auth-password").autocomplete = register ? "new-password" : "current-password";
 }
+
+// ---------- вкладки ----------
+
+const TABS = ["search", "feed", "map"];
 
 function renderTabs() {
   for (const tab of TABS) {
@@ -357,6 +377,15 @@ function renderPlaces() {
 
     text.append(name, meta);
 
+    const failure = state.placeErrors.get(place.id);
+    if (failure) {
+      const error = document.createElement("span");
+      error.className = "place-error";
+      error.setAttribute("role", "status");
+      error.textContent = failure;
+      text.appendChild(error);
+    }
+
     const distance = document.createElement("span");
     distance.className = "place-distance";
     distance.textContent = formatDistance(place.distanceMeters);
@@ -413,23 +442,222 @@ function renderFeed() {
   }
 }
 
+// ---------- карта ----------
+
+// Карта живёт в стороне от общего перерисовывания: SDK грузится один раз,
+// объект карты переживает render(), меняются только метки.
+//
+// Версия API — 2.1, а не 3.0: ключ бесплатного тарифа третьей версией
+// не принимается (403 «Invalid api key»), второй — принимается.
+const yandex = {
+  status: "idle",  // idle | loading | ready | failed
+  map: null,
+  visits: null,    // коллекция меток с отметками — своя, чтобы чистить только её
+  me: null,        // метка «вы здесь»
+  asked: false,    // положение спрашиваем один раз за сеанс
+  drawn: "",       // по какому набору отметок нарисованы текущие метки
+  note: "",
+};
+
+async function loadMapSdk() {
+  const config = await api("GET", "/api/maps/config");
+
+  if (!config.apiKey) {
+    throw new Error("Карта не настроена: на сервере не задан ключ Яндекс.Карт.");
+  }
+
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src =
+      `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(config.apiKey)}&lang=ru_RU`;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Не удалось загрузить Яндекс.Карты."));
+    document.head.appendChild(script);
+  });
+
+  await ymaps.ready();
+}
+
+function createMap() {
+  yandex.map = new ymaps.Map(
+    $("map"),
+    { bounds: fitAll(state.visits), controls: ["zoomControl", "geolocationControl"] },
+    // Контейнер меняет размер при переключении вкладок — пусть карта следит сама.
+    { autoFitToViewport: "always" });
+
+  // Отметки живут в своей коллекции: её мы очищаем при перерисовке,
+  // а метка «вы здесь» лежит рядом и переживает это.
+  yandex.visits = new ymaps.GeoObjectCollection();
+  yandex.map.geoObjects.add(yandex.visits);
+}
+
+// Рамка вокруг всех отметок, углами юго-запад и северо-восток. Запас примерно
+// в 200 метров не даёт зуму улететь в максимум, когда отметка одна или все они
+// в одной точке.
+function fitAll(visits) {
+  const pad = 0.002;
+  const lats = visits.map((visit) => visit.lat);
+  const lons = visits.map((visit) => visit.lon);
+
+  return [
+    [Math.min(...lats) - pad, Math.min(...lons) - pad],
+    [Math.max(...lats) + pad, Math.max(...lons) + pad],
+  ];
+}
+
+function drawMarkers() {
+  // drawMarkers зовётся на каждый render(), а пересоздавать метки незачем,
+  // пока набор отметок не изменился.
+  const drawn = state.visits
+    .map((visit) => `${visit.placeId}:${visit.visitors.map((v) => v.userId)}`)
+    .join("|");
+
+  if (drawn === yandex.drawn) return;
+
+  yandex.visits.removeAll();
+  for (const visit of state.visits) yandex.visits.add(placemark(visit));
+
+  yandex.drawn = drawn;
+}
+
+// Метка — стопка аватарок тех, кто здесь отметился. Название места и время
+// уходят в подсказку: на карте для них нет места.
+function placemark(visit) {
+  const hint = [
+    visit.name,
+    ...visit.visitors.map(
+      (visitor) => `${visitor.displayName} — ${formatWhen(visitor.createdAt)}`),
+  ].map(escapeHtml).join("<br>");
+
+  // Ширина стопки: аватарка 26 пикселей плюс отступы вокруг.
+  const width = 8 + visit.visitors.length * 28;
+
+  return new ymaps.Placemark(
+    [visit.lat, visit.lon],
+    { hintContent: hint },
+    {
+      iconLayout: ymaps.templateLayoutFactory.createClass(
+        `<div class="pin">${visit.visitors.map(avatarHtml).join("")}</div>`),
+      // Метка нарисована над точкой, поэтому и область наведения — над ней.
+      iconShape: { type: "Rectangle", coordinates: [[-width / 2, -36], [width / 2, 0]] },
+    });
+}
+
+// Фотография есть не у всех: вместо неё — первая буква имени на своём цвете.
+function avatarHtml(visitor) {
+  if (visitor.hasPhoto) {
+    return `<img class="ava" src="/api/users/${visitor.userId}/photo"`
+      + ` alt="${escapeHtml(visitor.displayName)}">`;
+  }
+
+  // Цвет от id, а не от имени: у тёзок кружки будут разными.
+  const color = `hsl(${(visitor.userId * 137) % 360}deg 35% 45%)`;
+  const letter = escapeHtml([...visitor.displayName][0]?.toUpperCase() ?? "?");
+
+  return `<span class="ava ava-empty" style="background:${color}">${letter}</span>`;
+}
+
+// В 2.1 макет метки и подсказка задаются строкой HTML, а имена приходят из базы.
+// Доллар экранируем вместе с разметкой: в шаблонах Яндекса $[...] — подстановка.
+const ESCAPED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", $: "&#36;" };
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"'$]/g, (character) => ESCAPED[character]);
+}
+
+// Где сейчас тот, кто смотрит карту. Камеру при этом не трогаем: карта про
+// отметки, а не про вас, и уводить её на другой конец города незачем —
+// вернуться к себе можно кнопкой геолокации.
+async function showMe() {
+  // Спрашиваем один раз за сеанс: отказ в доступе повторным запросом не исправить.
+  yandex.asked = true;
+
+  try {
+    const position = await currentPosition();
+
+    yandex.me = new ymaps.Placemark(
+      [position.lat, position.lon],
+      { hintContent: "Вы здесь" },
+      {
+        iconLayout: ymaps.templateLayoutFactory.createClass('<div class="here"></div>'),
+        iconShape: { type: "Circle", coordinates: [0, 0], radius: 9 },
+        zIndex: 1000,
+      });
+
+    yandex.map.geoObjects.add(yandex.me);
+  } catch (error) {
+    // Карта без своей точки всё равно полезна — это замечание, а не отказ.
+    yandex.note = `Своё положение не показано: ${error.message}`;
+  }
+
+  render();
+}
+
+function renderMap() {
+  if (!state.me || state.tab !== "map") return;
+
+  const empty = state.visits.length === 0;
+
+  $("map-empty").hidden = !empty;
+  // Контейнер держим на экране и пока карта грузится: размеры она меряет
+  // при создании, а у скрытого блока они нулевые.
+  $("map").hidden = empty;
+
+  $("map-note").textContent = yandex.note;
+  $("map-note").hidden = !yandex.note;
+
+  if (empty) return;
+
+  if (yandex.status === "ready") {
+    drawMarkers();
+    if (!yandex.asked) showMe();
+  } else if (yandex.status === "idle") {
+    startMap();
+  }
+}
+
+async function startMap() {
+  yandex.status = "loading";
+
+  try {
+    await loadMapSdk();
+    createMap();
+    yandex.status = "ready";
+    drawMarkers();
+  } catch (error) {
+    // Повторных попыток нет намеренно: render() зовётся часто, и авто-повтор
+    // превратился бы в бесконечный цикл запросов.
+    yandex.status = "failed";
+    yandex.note = error.message === "Failed to fetch"
+      ? "Нет связи с сервером."
+      : error.message;
+  }
+
+  render();
+}
+
 function render() {
   renderAuth();
   renderTabs();
   renderCategories();
   renderPlaces();
   renderFeed();
+  renderMap();
 
   const button = $("search");
   button.disabled = state.loading;
   button.textContent = state.loading ? "Ищу…" : "Найти рядом";
 
   if (!state.me) {
-    $("hint").textContent = "Войдите, чтобы отмечаться в местах.";
+    $("hint").textContent = "Войдите или зарегистрируйтесь, чтобы отмечаться в местах.";
     return;
   }
 
-  if (state.tab === "feed") {
+  if (state.tab === "map") {
+    $("hint").textContent = yandex.status === "loading"
+      ? "Загружаю карту…"
+      : "Отметки всех пользователей — ваши и чужие.";
+  } else if (state.tab === "feed") {
     $("hint").textContent = state.feed.length
       ? `${state.feed.length} ${plural(state.feed.length, "отметка", "отметки", "отметок")}.`
       : "Здесь появятся места, где вы отметились.";
@@ -469,7 +697,8 @@ function formatDistance(meters) {
 // ---------- старт ----------
 
 $("search").addEventListener("click", search);
-$("dev-login").addEventListener("click", devLogin);
+$("auth-form").addEventListener("submit", submitAuth);
+$("auth-toggle").addEventListener("click", toggleAuthMode);
 $("logout").addEventListener("click", logout);
 
 for (const tab of TABS) {
@@ -481,13 +710,11 @@ for (const tab of TABS) {
 
 (async () => {
   try {
-    [state.auth, state.categories] = await Promise.all([
-      api("GET", "/api/auth/config"),
-      api("GET", "/api/categories"),
-    ]);
+    state.categories = await api("GET", "/api/categories");
 
     await loadMe();
     await loadFeed();
+    await loadVisits();
   } catch (error) {
     showNote(error.message === "Failed to fetch"
       ? "Нет связи с сервером."

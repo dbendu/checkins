@@ -11,8 +11,9 @@ services:
     expose:
       - "8080"
     environment:
-      # user-secrets в проде не читаются — токен приходит отсюда
-      Telegram__BotToken: "${Telegram__BotToken:?задайте токен бота в .env}"
+      # user-secrets в проде не читаются — ключ карт приходит отсюда.
+      # Не обязателен: без него не будет только карты.
+      Maps__ApiKey: "${Maps__ApiKey:-}"
     volumes:
       - checkin-data:/data
       # Радиус, категории и их сопоставление с тегами OSM правятся на сервере

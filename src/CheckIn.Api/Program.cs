@@ -30,13 +30,13 @@ builder.Services
     .ValidateDataAnnotations();
 
 builder.Services
-    .AddOptions<DatabaseConfig>()
-    .BindConfiguration(DatabaseConfig.Section)
+    .AddOptions<MapsConfig>()
+    .BindConfiguration(MapsConfig.Section)
     .ValidateDataAnnotations();
 
 builder.Services
-    .AddOptions<TelegramConfig>()
-    .BindConfiguration(TelegramConfig.Section)
+    .AddOptions<DatabaseConfig>()
+    .BindConfiguration(DatabaseConfig.Section)
     .ValidateDataAnnotations();
 
 // Ключами Data Protection подписывается cookie. По умолчанию они живут в памяти
@@ -94,7 +94,8 @@ builder.Services.AddScoped<ICheckInsRepository, CheckInsRepository>();
 builder.Services.AddScoped<IPlacesCategoriesRepository, PlacesCategoriesRepository>();
 builder.Services.AddScoped<CheckInService>();
 builder.Services.AddScoped<IUsersRepository, UsersRepository>();
-builder.Services.AddSingleton<TelegramLoginVerifier>();
+builder.Services.AddScoped<IUserPhotosRepository, UserPhotosRepository>();
+builder.Services.AddScoped<UsersService>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 var app = builder.Build();
