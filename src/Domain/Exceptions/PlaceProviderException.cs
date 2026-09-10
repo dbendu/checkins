@@ -6,13 +6,13 @@ public class PlaceProviderException : Exception
 
     public string Reason { get; }
 
-    public PlaceProviderException(string provider, string reason)
+    public PlaceProviderException(string provider, string reason) : base(reason)
     {
         Provider = provider;
         Reason = reason;
     }
 
-    public PlaceProviderException(string provider, Exception inner)
+    public PlaceProviderException(string provider, Exception inner) : base(inner.Message, inner)
     {
         Provider = provider;
         Reason = inner.Message;

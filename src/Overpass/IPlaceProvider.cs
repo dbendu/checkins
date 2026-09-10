@@ -53,17 +53,17 @@ public sealed class OverpassPlaceProvider(
         catch (JsonException ex)
         {
             logger.LogError(ex, "Ошибка при чтении тела ответа");
-            throw new PlaceProviderException("Overpass вернул не JSON.", ex.Message);
+            throw new PlaceProviderException("Overpass вернул не JSON.", ex);
         }
         catch (Exception ex) when (ex is not PlaceProviderException && !token.IsCancellationRequested)
         {
             logger.LogError(ex, "Ошибка при выполнении запроса");
-            throw new PlaceProviderException("Ошибка при выполнении запроса", ex.Message);
+            throw new PlaceProviderException("Ошибка при выполнении запроса", ex);
         }
         catch (TaskCanceledException ex)
         {
             logger.LogError(ex, "Таймаут запроса");
-            throw new PlaceProviderException("Таймаут запроса", ex.Message);
+            throw new PlaceProviderException("Таймаут запроса", ex);
         }
     }
 

@@ -7,7 +7,9 @@ namespace CheckIn.Api.Controllers.Places;
 
 [ApiController]
 [Route("api/places")]
-public sealed class PlacesController(NearbyPlacesService search) : ControllerBase
+public sealed class PlacesController(
+    NearbyPlacesService search,
+    ILogger<PlacesController> logger) : ControllerBase
 {
     [HttpGet("nearby")]
     public async Task<ActionResult<NearbyResponse>> Nearby(
@@ -48,9 +50,11 @@ public sealed class PlacesController(NearbyPlacesService search) : ControllerBas
         }
         catch (PlaceProviderException e)
         {
+            logger.LogWarning(e, "Поиск мест не удался, провайдер {Provider}", e.Provider);
+
             return Problem(
                 title: "Справочник мест недоступен",
-                detail: e.Message,
+                detail: "OSM недоступны, повторите позже.",
                 statusCode: StatusCodes.Status502BadGateway
             );
         }
