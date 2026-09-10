@@ -632,23 +632,29 @@ function drawMarkers() {
 // Метка — стопка аватарок тех, кто здесь отметился. Название места и время
 // уходят в подсказку: на карте для них нет места.
 function placemark(visit) {
-  const hint = [
-    visit.name,
-    ...visit.visitors.map(
-      (visitor) => `${visitor.displayName} — ${formatWhen(visitor.createdAt)}`),
-  ].map(escapeHtml).join("<br>");
+  const name = escapeHtml(visit.name);
+  const who = visit.visitors
+    .map((visitor) => escapeHtml(`${visitor.displayName} — ${formatWhen(visitor.createdAt)}`))
+    .join("<br>");
 
   // Ширина стопки: аватарка 26 пикселей плюс отступы вокруг.
   const width = 8 + visit.visitors.length * 28;
 
   return new ymaps.Placemark(
     [visit.lat, visit.lon],
-    { hintContent: hint },
+    {
+      // Подсказка — для мыши, она появляется по наведению. На телефоне наведения
+      // не бывает, поэтому то же самое дублируется балуном: он открывается
+      // касанием, а на компьютере — щелчком.
+      hintContent: `${name}<br>${who}`,
+      balloonContent: `<strong>${name}</strong><br>${who}`,
+    },
     {
       iconLayout: ymaps.templateLayoutFactory.createClass(
         `<div class="pin">${visit.visitors.map(avatarHtml).join("")}</div>`),
-      // Метка нарисована над точкой, поэтому и область наведения — над ней.
-      iconShape: { type: "Rectangle", coordinates: [[-width / 2, -36], [width / 2, 0]] },
+      // Метка нарисована над точкой, поэтому и область попадания — над ней.
+      // По высоте берём с запасом: пальцем целятся хуже, чем курсором.
+      iconShape: { type: "Rectangle", coordinates: [[-width / 2, -44], [width / 2, 4]] },
     });
 }
 
