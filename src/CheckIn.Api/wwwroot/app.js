@@ -554,8 +554,6 @@ const yandex = {
   status: "idle",  // idle | loading | ready | failed
   map: null,
   visits: null,    // коллекция меток с отметками — своя, чтобы чистить только её
-  me: null,        // метка «вы здесь»
-  here: null,      // координаты того, кто смотрит; null — не дали доступ
   drawn: "",       // по какому набору отметок нарисованы текущие метки
   note: "",
 };
@@ -592,12 +590,16 @@ function createMap() {
   yandex.map.geoObjects.add(yandex.visits);
 }
 
-// Куда смотреть при открытии: на все отметки, а пока их нет — на самого
-// зрителя. Его положение здесь уже известно: без него карты не бывает.
+// Куда смотреть при открытии: на все отметки, а пока их нет — на центр города.
+// Своё положение мы не спрашиваем, так что больше центрировать не на что.
+// Белград зашит здесь: город у нас пока один, а гадать по языку браузера
+// смысла нет.
+const CITY_CENTER = [44.8168, 20.4601];
+
 function startLocation() {
   return state.visits.length > 0
     ? { bounds: fitAll(state.visits) }
-    : { center: [yandex.here.lat, yandex.here.lon], zoom: 16 };
+    : { center: CITY_CENTER, zoom: 13 };
 }
 
 // Рамка вокруг всех отметок, углами юго-запад и северо-восток. Запас примерно
@@ -680,32 +682,6 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"'$]/g, (character) => ESCAPED[character]);
 }
 
-// Не бросает: отказ в доступе — не поломка, а повод не показывать карту.
-async function locate() {
-  try {
-    yandex.here = await currentPosition();
-  } catch (error) {
-    yandex.note = `Карта не показана: ${error.message}`;
-  }
-}
-
-// Где сейчас тот, кто смотрит карту. Камеру при этом не трогаем: если отметки
-// есть, карта показывает их, а вернуться к себе можно кнопкой геолокации.
-function drawMe() {
-  if (yandex.me) return;
-
-  yandex.me = new ymaps.Placemark(
-    [yandex.here.lat, yandex.here.lon],
-    { hintContent: "Вы здесь" },
-    {
-      iconLayout: ymaps.templateLayoutFactory.createClass('<div class="here"></div>'),
-      iconShape: { type: "Circle", coordinates: [0, 0], radius: 9 },
-      zIndex: 1000,
-    });
-
-  yandex.map.geoObjects.add(yandex.me);
-}
-
 function renderMap() {
   if (!state.me || state.tab !== "map") return;
 
@@ -730,18 +706,10 @@ async function startMap() {
   try {
     await loadMapSdk();
 
-    // Положение спрашиваем до создания карты: без доступа к геоданным карты
-    // не будет вовсе, а когда отметок ещё нет — центрировать её не на что.
-    await locate();
+    createMap();
+    drawMarkers();
 
-    if (yandex.here) {
-      createMap();
-      drawMarkers();
-      drawMe();
-      yandex.status = "ready";
-    } else {
-      yandex.status = "failed";
-    }
+    yandex.status = "ready";
   } catch (error) {
     // Повторных попыток нет намеренно: render() зовётся часто, и авто-повтор
     // превратился бы в бесконечный цикл запросов.

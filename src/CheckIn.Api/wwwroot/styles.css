@@ -301,14 +301,3 @@ input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   line-height: 1;
 }
 
-/* Своя точка на карте: кружок, а не аватарка — чтобы не путать с отметками. */
-.here {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 3px solid #fff;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
-  /* Центром на точку, в отличие от метки-стопки, которая стоит над ней. */
-  transform: translate(-50%, -50%);
-}
