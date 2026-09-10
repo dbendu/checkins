@@ -15,6 +15,8 @@ public sealed class CheckInService(
 
     public Task<PlaceVisit[]> ListAllAsync(CancellationToken token) => checkIns.ListAllAsync(token);
 
+    public Task<bool> DeleteAsync(long userId, long checkInId, CancellationToken token) => checkIns.DeleteAsync(userId, checkInId, token);
+
     public async Task CreateAsync(long userId, Place place, CancellationToken token)
     {
         var now = DateTimeOffset.UtcNow;

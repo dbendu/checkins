@@ -70,6 +70,14 @@ public sealed class CheckInsController(
         return Ok(response);
     }
 
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> Delete(long id, CancellationToken token)
+    {
+        var deleted = await checkIns.DeleteAsync(User.RequireUserId(), id, token);
+
+        return deleted ? NoContent() : NotFound();
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(
         [FromBody] CreateCheckInRequest request, CancellationToken token)

@@ -20,7 +20,12 @@ const state = {
   tab: "search",        // "search" | "feed" | "map"
   me: null,             // профиль из /api/auth/me, null — не вошли
   mode: "login",        // "login" | "register" — какой режим формы входа
+  photoVersion: 0,      // растёт после загрузки: адрес фотографии не меняется
 };
+
+// Адрес фотографии постоянный, поэтому после замены браузер показал бы старую —
+// версия в строке запроса заставляет его перечитать.
+const photoUrl = (userId) => `/api/users/${userId}/photo?v=${state.photoVersion}`;
 
 // ---------- сеть ----------
 
@@ -261,6 +266,85 @@ async function checkIn(place, button) {
   }
 }
 
+// ---------- фотография профиля ----------
+
+// Ограничение сервера продублировано здесь намеренно: снимок с телефона легко
+// весит больше, и объяснить это до отправки честнее, чем после.
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+
+async function uploadPhoto(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+
+  showNote("");
+
+  try {
+    if (file.size > MAX_PHOTO_BYTES) {
+      throw new Error("Файл больше 2 МБ — уменьшите картинку и попробуйте снова.");
+    }
+
+    const body = new FormData();
+    body.append("file", file);
+
+    // Мимо api(): там тело уходит как JSON, а здесь нужен multipart,
+    // и Content-Type проставит сам браузер вместе с границей частей.
+    const response = await fetch("/api/users/me/photo", {
+      method: "PUT",
+      body,
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new Error((problem && problem.detail) || `Сервер ответил ${response.status}`);
+    }
+
+    state.me.hasPhoto = true;
+    state.photoVersion += 1;
+
+    // hasPhoto для меток приходит из данных карты, а не из профиля: без этого
+    // на карте осталась бы буква, пока страницу не перезагрузят.
+    await loadVisits();
+
+    // Адрес фотографии не изменился — метки сами бы не перерисовались.
+    yandex.drawn = "";
+  } catch (error) {
+    showNote(error.message === "Failed to fetch"
+      ? "Нет связи с сервером."
+      : `Не удалось загрузить фотографию: ${error.message}`);
+  } finally {
+    // Иначе повторный выбор того же файла не считается изменением.
+    event.target.value = "";
+    render();
+  }
+}
+
+// ---------- удаление отметки ----------
+
+async function deleteVisit(visit, button) {
+  button.disabled = true;
+  button.textContent = "Удаляю…";
+
+  try {
+    await api("DELETE", `/api/checkins/${visit.id}`);
+
+    // Место снова свободно: и кнопка в списке поиска, и прошлый отказ по кулдауну
+    // относились к отметке, которой больше нет.
+    state.checkedIn.delete(visit.placeId);
+    state.placeErrors.delete(visit.placeId);
+
+    await loadFeed();
+    await loadVisits();
+    showNote("");
+  } catch (error) {
+    showNote(error.message === "Failed to fetch"
+      ? "Нет связи с сервером."
+      : `Не удалось удалить отметку: ${error.message}`);
+  } finally {
+    render();
+  }
+}
+
 // ---------- отрисовка ----------
 
 function renderAuth() {
@@ -272,6 +356,18 @@ function renderAuth() {
 
   if (inside) {
     $("me-name").textContent = state.me.displayName;
+
+    // Разметка уже экранирована внутри avatarHtml — тем же кодом, что и метки карты.
+    $("me-photo").innerHTML = avatarHtml({
+      userId: state.me.id,
+      displayName: state.me.displayName,
+      hasPhoto: state.me.hasPhoto,
+    });
+
+    $("me-photo").title = state.me.hasPhoto
+      ? "Загрузить другую фотографию"
+      : "Загрузить фотографию";
+
     return;
   }
 
@@ -437,7 +533,12 @@ function renderFeed() {
     when.className = "visit-when";
     when.textContent = formatWhen(visit.createdAt);
 
-    row.append(text, when);
+    const remove = document.createElement("button");
+    remove.className = "linky";
+    remove.textContent = "удалить";
+    remove.addEventListener("click", () => deleteVisit(visit, remove));
+
+    row.append(text, when, remove);
     box.appendChild(row);
   }
 }
@@ -454,7 +555,7 @@ const yandex = {
   map: null,
   visits: null,    // коллекция меток с отметками — своя, чтобы чистить только её
   me: null,        // метка «вы здесь»
-  asked: false,    // положение спрашиваем один раз за сеанс
+  here: null,      // координаты того, кто смотрит; null — не дали доступ
   drawn: "",       // по какому набору отметок нарисованы текущие метки
   note: "",
 };
@@ -481,7 +582,7 @@ async function loadMapSdk() {
 function createMap() {
   yandex.map = new ymaps.Map(
     $("map"),
-    { bounds: fitAll(state.visits), controls: ["zoomControl", "geolocationControl"] },
+    { ...startLocation(), controls: ["zoomControl", "geolocationControl"] },
     // Контейнер меняет размер при переключении вкладок — пусть карта следит сама.
     { autoFitToViewport: "always" });
 
@@ -489,6 +590,14 @@ function createMap() {
   // а метка «вы здесь» лежит рядом и переживает это.
   yandex.visits = new ymaps.GeoObjectCollection();
   yandex.map.geoObjects.add(yandex.visits);
+}
+
+// Куда смотреть при открытии: на все отметки, а пока их нет — на самого
+// зрителя. Его положение здесь уже известно: без него карты не бывает.
+function startLocation() {
+  return state.visits.length > 0
+    ? { bounds: fitAll(state.visits) }
+    : { center: [yandex.here.lat, yandex.here.lon], zoom: 16 };
 }
 
 // Рамка вокруг всех отметок, углами юго-запад и северо-восток. Запас примерно
@@ -546,7 +655,7 @@ function placemark(visit) {
 // Фотография есть не у всех: вместо неё — первая буква имени на своём цвете.
 function avatarHtml(visitor) {
   if (visitor.hasPhoto) {
-    return `<img class="ava" src="/api/users/${visitor.userId}/photo"`
+    return `<img class="ava" src="${photoUrl(visitor.userId)}"`
       + ` alt="${escapeHtml(visitor.displayName)}">`;
   }
 
@@ -565,55 +674,48 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"'$]/g, (character) => ESCAPED[character]);
 }
 
-// Где сейчас тот, кто смотрит карту. Камеру при этом не трогаем: карта про
-// отметки, а не про вас, и уводить её на другой конец города незачем —
-// вернуться к себе можно кнопкой геолокации.
-async function showMe() {
-  // Спрашиваем один раз за сеанс: отказ в доступе повторным запросом не исправить.
-  yandex.asked = true;
-
+// Не бросает: отказ в доступе — не поломка, а повод не показывать карту.
+async function locate() {
   try {
-    const position = await currentPosition();
-
-    yandex.me = new ymaps.Placemark(
-      [position.lat, position.lon],
-      { hintContent: "Вы здесь" },
-      {
-        iconLayout: ymaps.templateLayoutFactory.createClass('<div class="here"></div>'),
-        iconShape: { type: "Circle", coordinates: [0, 0], radius: 9 },
-        zIndex: 1000,
-      });
-
-    yandex.map.geoObjects.add(yandex.me);
+    yandex.here = await currentPosition();
   } catch (error) {
-    // Карта без своей точки всё равно полезна — это замечание, а не отказ.
-    yandex.note = `Своё положение не показано: ${error.message}`;
+    yandex.note = `Карта не показана: ${error.message}`;
   }
+}
 
-  render();
+// Где сейчас тот, кто смотрит карту. Камеру при этом не трогаем: если отметки
+// есть, карта показывает их, а вернуться к себе можно кнопкой геолокации.
+function drawMe() {
+  if (yandex.me) return;
+
+  yandex.me = new ymaps.Placemark(
+    [yandex.here.lat, yandex.here.lon],
+    { hintContent: "Вы здесь" },
+    {
+      iconLayout: ymaps.templateLayoutFactory.createClass('<div class="here"></div>'),
+      iconShape: { type: "Circle", coordinates: [0, 0], radius: 9 },
+      zIndex: 1000,
+    });
+
+  yandex.map.geoObjects.add(yandex.me);
 }
 
 function renderMap() {
   if (!state.me || state.tab !== "map") return;
 
-  const empty = state.visits.length === 0;
+  // Контейнер прячем только вместе с картой: размеры она меряет при создании,
+  // а у скрытого блока они нулевые.
+  $("map").hidden = yandex.status === "failed";
 
-  $("map-empty").hidden = !empty;
-  // Контейнер держим на экране и пока карта грузится: размеры она меряет
-  // при создании, а у скрытого блока они нулевые.
-  $("map").hidden = empty;
+  // Отметок может ещё не быть — карту всё равно показываем, просто пустую,
+  // а строка над ней объясняет, почему на ней ничего нет.
+  $("map-empty").hidden = state.visits.length > 0 || yandex.status !== "ready";
 
   $("map-note").textContent = yandex.note;
   $("map-note").hidden = !yandex.note;
 
-  if (empty) return;
-
-  if (yandex.status === "ready") {
-    drawMarkers();
-    if (!yandex.asked) showMe();
-  } else if (yandex.status === "idle") {
-    startMap();
-  }
+  if (yandex.status === "ready") drawMarkers();
+  else if (yandex.status === "idle") startMap();
 }
 
 async function startMap() {
@@ -621,9 +723,19 @@ async function startMap() {
 
   try {
     await loadMapSdk();
-    createMap();
-    yandex.status = "ready";
-    drawMarkers();
+
+    // Положение спрашиваем до создания карты: без доступа к геоданным карты
+    // не будет вовсе, а когда отметок ещё нет — центрировать её не на что.
+    await locate();
+
+    if (yandex.here) {
+      createMap();
+      drawMarkers();
+      drawMe();
+      yandex.status = "ready";
+    } else {
+      yandex.status = "failed";
+    }
   } catch (error) {
     // Повторных попыток нет намеренно: render() зовётся часто, и авто-повтор
     // превратился бы в бесконечный цикл запросов.
@@ -700,6 +812,8 @@ $("search").addEventListener("click", search);
 $("auth-form").addEventListener("submit", submitAuth);
 $("auth-toggle").addEventListener("click", toggleAuthMode);
 $("logout").addEventListener("click", logout);
+$("me-photo").addEventListener("click", () => $("me-photo-file").click());
+$("me-photo-file").addEventListener("change", uploadPhoto);
 
 for (const tab of TABS) {
   $(`tab-${tab}-btn`).addEventListener("click", () => {

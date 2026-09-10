@@ -46,6 +46,11 @@
   </section>
 
   <section class="card me" id="me-card" hidden>
+    <!-- Фотография заодно и кнопка: нажатие открывает выбор файла, а если
+         фотографии ещё нет, на её месте кружок с буквой имени. -->
+    <button type="button" id="me-photo" class="me-photo" title="Загрузить фотографию"></button>
+    <input type="file" id="me-photo-file" accept="image/jpeg,image/png,image/webp" hidden>
+
     <div class="me-text">
       <strong id="me-name"></strong>
     </div>
@@ -89,7 +94,7 @@
   <div id="tab-map" role="tabpanel" aria-labelledby="tab-map-btn" hidden>
     <section class="card">
       <p id="map-note" class="note" role="status" hidden></p>
-      <p id="map-empty" class="empty" hidden>Пока никто нигде не отметился.</p>
+      <p id="map-empty" class="empty" hidden>Пока никто нигде не отметился — на карте будут ваши и чужие отметки.</p>
       <div id="map" class="map"></div>
     </section>
   </div>

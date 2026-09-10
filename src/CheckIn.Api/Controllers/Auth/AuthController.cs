@@ -14,6 +14,7 @@ namespace CheckIn.Api.Controllers.Auth;
 [Route("api/auth")]
 public sealed class AuthController(
     IUsersRepository users,
+    IUserPhotosRepository photos,
     UsersService accounts) : ControllerBase
 {
     [HttpPost("register")]
@@ -32,7 +33,7 @@ public sealed class AuthController(
 
             await SignInAsync(user);
 
-            return Created(string.Empty, ToResponse(user));
+            return Created(string.Empty, await ToResponseAsync(user, token));
         }
         catch (LoginTakenException)
         {
@@ -51,7 +52,7 @@ public sealed class AuthController(
 
             await SignInAsync(user);
 
-            return Ok(ToResponse(user));
+            return Ok(await ToResponseAsync(user, token));
         }
         catch (UserNotFoundException)
         {
@@ -82,7 +83,7 @@ public sealed class AuthController(
             return Unauthorized();
         }
 
-        return Ok(ToResponse(user));
+        return Ok(await ToResponseAsync(user, token));
     }
 
     [HttpPost("logout")]
@@ -105,6 +106,6 @@ public sealed class AuthController(
             new AuthenticationProperties { IsPersistent = true });
     }
 
-    private static UserResponse ToResponse(User user) =>
-        new(user.Id, user.Login, user.DisplayName);
+    private async Task<UserResponse> ToResponseAsync(User user, CancellationToken token) =>
+        new(user.Id, user.Login, user.DisplayName, await photos.ExistsAsync(user.Id, token));
 }

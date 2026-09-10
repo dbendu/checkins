@@ -12,6 +12,8 @@ public interface ICheckInsRepository
     Task<UserCheckIn[]> ListByUserAsync(long userId, CancellationToken token);
 
     Task<PlaceVisit[]> ListAllAsync(CancellationToken token);
+
+    Task<bool> DeleteAsync(long userId, long id, CancellationToken token);
 }
 
 public sealed class CheckInsRepository(IDbConnectionFactory factory) : ICheckInsRepository
@@ -141,6 +143,18 @@ public sealed class CheckInsRepository(IDbConnectionFactory factory) : ICheckIns
             cancellationToken: token));
 
         return createdAt is null ? null : Iso.Parse(createdAt);
+    }
+
+    public async Task<bool> DeleteAsync(long userId, long id, CancellationToken token)
+    {
+        await using var connection = await factory.OpenAsync(token);
+
+        var affected = await connection.ExecuteAsync(new CommandDefinition(
+            "delete from check_ins where id = @id and user_id = @userId;",
+            new { id, userId },
+            cancellationToken: token));
+
+        return affected > 0;
     }
 
     public async Task AddAsync(long userId, long placeId, DateTimeOffset createdAt, CancellationToken token)
