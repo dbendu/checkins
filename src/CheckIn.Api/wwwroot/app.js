@@ -213,7 +213,7 @@ async function loadFeed() {
 }
 
 // Карта общая, поэтому и список для неё — общий, а не только свои отметки.
-async function loadVisits() {
+async function loadVisits({ quiet = false } = {}) {
   if (!state.me) {
     state.visits = [];
     return;
@@ -222,9 +222,38 @@ async function loadVisits() {
   try {
     state.visits = await api("GET", "/api/checkins/map");
   } catch (error) {
+    // Фоновое обновление молчит и оставляет на карте прошлые отметки: ругаться
+    // раз в пятнадцать секунд из-за моргнувшей сети — хуже, чем показать старое.
+    if (quiet) return;
+
     state.visits = [];
     showNote(`Не удалось загрузить отметки для карты: ${error.message}`);
   }
+}
+
+// Пока карта открыта, чужие отметки подтягиваются сами.
+const MAP_REFRESH_MS = 15000;
+
+let mapRefresh = null;
+
+function startMapRefresh() {
+  if (mapRefresh === null) mapRefresh = setInterval(refreshVisits, MAP_REFRESH_MS);
+}
+
+function stopMapRefresh() {
+  if (mapRefresh === null) return;
+
+  clearInterval(mapRefresh);
+  mapRefresh = null;
+}
+
+async function refreshVisits() {
+  // Со скрытой вкладки ходить на сервер незачем: увидеть обновление всё равно
+  // некому, а вернувшись, человек получит свежие данные следующим тиком.
+  if (document.hidden) return;
+
+  await loadVisits({ quiet: true });
+  render();
 }
 
 // ---------- отметка ----------
@@ -683,7 +712,12 @@ function escapeHtml(text) {
 }
 
 function renderMap() {
-  if (!state.me || state.tab !== "map") return;
+  if (!state.me || state.tab !== "map") {
+    stopMapRefresh();
+    return;
+  }
+
+  startMapRefresh();
 
   // Контейнер прячем только вместе с картой: размеры она меряет при создании,
   // а у скрытого блока они нулевые.
